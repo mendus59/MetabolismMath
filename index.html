@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supplement Metabolism Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+/* Layout: left rail = compound picker + formula editor; right = results (summary chips → pathway flow → fate bars → energy/dose → descriptors) */
+:root{
+  --bg:#f2f5f6; --surface:#ffffff; --ink:#132029; --muted:#596a75; --line:#d6dfe4;
+  --accent:#0d6b71; --accent-soft:#e0eff0;
+  --f-fuel:#d07a22; --f-cofactor:#0d6b71; --f-stored:#7457ad; --f-detox:#bd3f66; --f-fermented:#628f2f; --f-unchanged:#8b99a3;
+  --good:#2f7d4f; --warn:#b7791f; --bad:#b83a3a;
+  --font-display:"Newsreader", Georgia, "Times New Roman", serif;
+  --font-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1619; --surface:#172126; --ink:#e3eaee; --muted:#93a4ae; --line:#2a3a42;
+    --accent:#4fb8bd; --accent-soft:#183539;
+    --f-fuel:#e9994a; --f-cofactor:#4fb8bd; --f-stored:#a389d8; --f-detox:#e26b8f; --f-fermented:#8fbe5a; --f-unchanged:#7d8d97;
+    --good:#5cc489; --warn:#e2ac4f; --bad:#ec6b6b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1619; --surface:#172126; --ink:#e3eaee; --muted:#93a4ae; --line:#2a3a42;
+  --accent:#4fb8bd; --accent-soft:#183539;
+  --f-fuel:#e9994a; --f-cofactor:#4fb8bd; --f-stored:#a389d8; --f-detox:#e26b8f; --f-fermented:#8fbe5a; --f-unchanged:#7d8d97;
+  --good:#5cc489; --warn:#e2ac4f; --bad:#ec6b6b;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5}
+a{color:var(--accent)}
+.wrap{max-width:1260px;margin:0 auto;padding:24px 20px 48px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:16px}
+h1{font-family:var(--font-display);font-weight:600;font-size:30px;line-height:1.15;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:66ch}
+.layout{display:grid;grid-template-columns:330px 1fr;gap:20px;align-items:start}
+@media (max-width:920px){.layout{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.panel h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:600}
+.rail{display:flex;flex-direction:column;gap:16px}
+input[type=text],input[type=number],select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+input:focus-visible,button:focus-visible,select:focus-visible,label.chk:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.lib{max-height:360px;overflow:auto;margin-top:10px;display:flex;flex-direction:column;gap:12px}
+.lib .grp{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 4px}
+.lib .items{display:flex;flex-wrap:wrap;gap:6px}
+.lib button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer}
+.lib button:hover{border-color:var(--accent)}
+.lib button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:13px;font-weight:500}
+.hint{font-size:12px;color:var(--muted)}
+.formula-in{font-family:var(--font-mono)}
+.err{color:var(--bad);font-size:13px;min-height:1em}
+.chks{display:grid;grid-template-columns:1fr;gap:4px}
+label.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 6px;border-radius:6px;cursor:pointer}
+label.chk:hover{background:var(--accent-soft)}
+label.chk input{margin-top:3px;accent-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 90px;gap:8px}
+.results{display:flex;flex-direction:column;gap:16px;min-width:0}
+.titlebar{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 16px}
+.titlebar h2.cmp{font-family:var(--font-display);font-size:26px;font-weight:600;margin:0;text-transform:none;letter-spacing:0;color:var(--ink)}
+.formula{font-family:var(--font-mono);font-size:15px;color:var(--muted)}
+.badge{font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px;border:1px solid var(--line);color:var(--muted)}
+.badge.doc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.chip{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);border-left-width:4px}
+.chip .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.chip .v{font-weight:600;font-size:15px;margin-top:2px}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;counter-reset:st}
+.stage{position:relative;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--bg)}
+.stage h3{margin:0 0 6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.stage h3::before{counter-increment:st;content:counter(st);display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--surface);font-size:11px;font-family:var(--font-mono)}
+.stage p{margin:0;font-size:13.5px;color:var(--ink)}
+.fate-row{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;margin-bottom:10px}
+@media (max-width:520px){.fate-row{grid-template-columns:1fr}}
+.fate-row .lbl{font-size:13px;font-weight:500}
+.fate-row .lbl small{display:block;color:var(--muted);font-weight:400}
+.bar{display:flex;height:26px;border-radius:6px;overflow:hidden;background:var(--line)}
+.bar span{display:block;height:100%;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+table.mix{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;font-variant-numeric:tabular-nums}
+table.mix th,table.mix td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
+table.mix td.n{text-align:right;font-family:var(--font-mono)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.big{font-family:var(--font-mono);font-size:24px;font-weight:500;font-variant-numeric:tabular-nums}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--font-mono);text-align:right;font-variant-numeric:tabular-nums}
+.dosebar{position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--line) 0%,var(--line) 100%);margin:26px 0 30px}
+.dosebar .zone{position:absolute;top:0;height:100%;border-radius:7px}
+.dosebar .tick{position:absolute;top:-6px;width:2px;height:26px;background:var(--ink)}
+.dosebar .tick span{position:absolute;top:28px;transform:translateX(-50%);font-size:11px;white-space:nowrap;color:var(--muted);font-family:var(--font-mono)}
+.dosebar .you{position:absolute;top:-20px;transform:translateX(-50%);font-size:11px;font-weight:600;white-space:nowrap}
+.dosebar .dot{position:absolute;top:-3px;width:20px;height:20px;border-radius:50%;transform:translateX(-50%);background:var(--accent);border:3px solid var(--surface);box-shadow:0 0 0 1px var(--accent)}
+.watch{border-left:4px solid var(--warn);background:var(--bg);padding:10px 12px;border-radius:6px;font-size:13.5px}
+.watch b{color:var(--warn)}
+table.el{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.el th,table.el td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--font-mono)}
+table.el th:first-child,table.el td:first-child{text-align:left}
+table.el th{font-family:var(--font-body);color:var(--muted);font-weight:500}
+.checks{list-style:none;margin:8px 0 0;padding:0;font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.checks li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px;background:var(--muted)}
+.checks li.ok::before{background:var(--good)}
+.checks li.no::before{background:var(--bad)}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:12px}
+.seg button{font:inherit;font-size:13px;font-weight:500;padding:7px 8px;border:0;background:var(--bg);color:var(--muted);cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--surface)}
+textarea{width:100%;font:inherit;font-family:var(--font-mono);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;resize:vertical;word-break:break-all}
+textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[readonly].formula-in{color:var(--muted);border-style:dashed}
+label.chk .auto{margin-left:auto;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 5px;align-self:center}
+label.chk input:disabled+span{color:var(--ink)}
+label.chk:has(input:disabled){cursor:default}
+.struct{background:#fff;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;padding:6px;min-height:180px;overflow:hidden}
+.struct svg{max-width:100%;height:auto;display:block}
+.engine{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.engine i{width:8px;height:8px;border-radius:50%;background:var(--warn);display:inline-block}
+.engine.ready i{background:var(--good)}
+.engine.failed i{background:var(--bad)}
+footer{margin-top:24px;font-size:12.5px;color:var(--muted);max-width:90ch}
+.muted{color:var(--muted)}
+.mono{font-family:var(--font-mono)}
+@media (prefers-reduced-motion:no-preference){.bar span{transition:width .35s ease}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Supplement Metabolism Calculator</h1>
+      <p class="sub">Pick a vitamin or supplement, or enter any molecular formula. You'll see how the body absorbs, transforms, stores and eliminates it, and how much of it could actually become energy.</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <section class="panel" aria-labelledby="lib-h">
+        <h2 id="lib-h">Compound library</h2>
+        <input type="text" id="libFilter" placeholder="Filter, e.g. B12, iron, fat-soluble" aria-label="Filter library">
+        <div class="lib" id="lib"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="form-h">
+        <h2 id="form-h">Chemical composition</h2>
+        <div class="field">
+          <label for="nameIn">Name</label>
+          <input type="text" id="nameIn">
+        </div>
+        <div class="seg" role="group" aria-label="Input type">
+          <button type="button" id="modeSmiles" aria-pressed="true">Structure (SMILES)</button>
+          <button type="button" id="modeFormula" aria-pressed="false">Formula only</button>
+        </div>
+        <div class="field" id="smilesField">
+          <label for="smilesIn">SMILES structure</label>
+          <textarea id="smilesIn" rows="3" spellcheck="false" autocomplete="off" placeholder="e.g. OC[C@H](O)[C@H]1OC(=O)C(O)=C1O"></textarea>
+          <span class="hint">Copy a compound's SMILES from <a href="https://pubchem.ncbi.nlm.nih.gov/">PubChem</a> (under Names and Identifiers) and paste it here. Use dots to separate salt parts: [Mg+2].[O-]C(=O)…</span>
+          <span class="engine" id="engine"><i></i><span>Loading structure engine…</span></span>
+          <span class="err" id="smilesErr" role="alert"></span>
+        </div>
+        <div class="field">
+          <label for="formulaIn">Molecular formula</label>
+          <input type="text" id="formulaIn" class="formula-in" spellcheck="false" autocomplete="off">
+          <span class="hint" id="formulaHint">Supports groups and hydrates: Mg3(C6H5O7)2, C4H9N3O2·H2O</span>
+          <span class="err" id="formulaErr" role="alert"></span>
+        </div>
+        <div class="field">
+          <span style="font-size:13px;font-weight:500">Structural features</span>
+          <span class="hint" id="featHint">A formula can't show structure, so tick what applies. These refine the prediction.</span>
+          <div class="chks" id="chks"></div>
+        </div>
+        <div class="field">
+          <label for="doseIn">Dose</label>
+          <div class="row2">
+            <input type="number" id="doseIn" min="0" step="any">
+            <input type="text" id="unitOut" readonly aria-label="Dose unit" tabindex="-1">
+          </div>
+          <span class="hint" id="doseHint"></span>
+        </div>
+      </section>
+    </aside>
+
+    <main class="results" id="results" aria-live="polite"></main>
+  </div>
+
+  <footer>
+    For learning, not medical advice. Library entries summarize published human data, mainly the <a href="https://ods.od.nih.gov/factsheets/list-all/">NIH Office of Dietary Supplements fact sheets</a>. Intake references are US adult values. The formula-only prediction uses simple rules (polarity, size, elements, the features you tick). It's meant to show how chemists reason about this, and it will be wrong for some molecules. Erythritol is a good example: it looks like a sugar but passes through unchanged. Energy uses Thornton's rule (~440 kJ per mole of O₂ consumed), with nitrogen assumed to leave as urea. Structures are parsed in your browser by <a href="https://www.rdkit.org/">RDKit</a>: it supplies Crippen logP, polar surface area, the full Rule-of-5 checks and automatic detection of functional groups.
+  </footer>
+</div>
+
+<script src="vendor/rdkit/RDKit_minimal.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- Data ---------- */
+const MASS={H:1.008,C:12.011,N:14.007,O:15.999,P:30.974,S:32.06,Cl:35.45,F:18.998,Br:79.904,I:126.904,Na:22.990,K:39.098,Mg:24.305,Ca:40.078,Fe:55.845,Zn:65.38,Cu:63.546,Se:78.971,Co:58.933,Mn:54.938,Cr:51.996,Mo:95.95,B:10.81,Si:28.085,Li:6.94};
+const METALS=new Set(["Na","K","Mg","Ca","Fe","Zn","Cu","Co","Mn","Cr","Mo","Li"]);
+const HALOGENS=["F","Cl","Br"]; // iodine handled separately (nutrient)
+
+const FATES=[
+  {k:"fuel",label:"Burned for energy",c:"--f-fuel"},
+  {k:"cofactor",label:"Used as cofactor / building block",c:"--f-cofactor"},
+  {k:"stored",label:"Stored in tissue",c:"--f-stored"},
+  {k:"detox",label:"Transformed & eliminated",c:"--f-detox"},
+  {k:"fermented",label:"Fermented by gut microbes",c:"--f-fermented"},
+  {k:"unchanged",label:"Excreted unchanged / unabsorbed",c:"--f-unchanged"}
+];
+
+const FEATURES=[
+  {k:"alphaGly",label:"α-glycosidic sugar links (starch-like)"},
+  {k:"betaGly",label:"β-glycosidic sugar links (fiber-like)"},
+  {k:"longChain",label:"Long hydrocarbon chain or polyene tail"},
+  {k:"carboxyl",label:"Carboxylic acid group (–COOH)"},
+  {k:"ester",label:"Ester (e.g. triglyceride, ethyl ester)"},
+  {k:"amine",label:"Amine / amino group"},
+  {k:"aromatic",label:"Aromatic ring"},
+  {k:"nHet",label:"Nitrogen-containing ring (heterocycle)"},
+  {k:"phosphate",label:"Phosphate group"},
+  {k:"mirror",label:"Unnatural mirror-image form (e.g. L-sugar)"}
+];
+
+const PRESETS=[
+ {id:"vita",name:"Vitamin A",chem:"Retinol",group:"Fat-soluble vitamins",formula:"C20H30O",flags:["longChain"],unit:"mcg",dose:900,rda:900,rdaLabel:"RDA (men, mcg RAE)",ul:3000,ulLabel:"UL (preformed)",
+  stages:{absorption:"Dissolves into bile-salt micelles with dietary fat. Enterocytes esterify it and pack it into chylomicrons, which enter the lymph.",
+   transport:"Chylomicron remnants deliver it to the liver. The liver releases it bound to retinol-binding protein (RBP4) and transthyretin.",
+   transformation:"Oxidized to retinal (for vision), then irreversibly to retinoic acid (for gene regulation).",
+   function:"Retinal forms rhodopsin in the retina. Retinoic acid controls gene expression through RAR/RXR nuclear receptors.",
+   storage:"About 70–90% of body stores sit in liver stellate cells as retinyl esters. It accumulates, so chronic excess can become toxic.",
+   excretion:"Retinoic acid is oxidized by CYP26 enzymes and glucuronidated, then leaves via bile and urine."},
+  mix:{cofactor:45,stored:40,detox:15},watch:"Preformed vitamin A accumulates in the liver. Chronic intake above the UL can cause liver damage, and high doses in pregnancy can cause birth defects."},
+ {id:"vitd",name:"Vitamin D3",chem:"Cholecalciferol",group:"Fat-soluble vitamins",formula:"C27H44O",flags:[],unit:"mcg",dose:50,rda:15,rdaLabel:"RDA (15 mcg = 600 IU)",ul:100,ulLabel:"UL (100 mcg = 4,000 IU)",
+  stages:{absorption:"Absorbed with dietary fat via micelles in the small intestine, then exported in chylomicrons through the lymph.",
+   transport:"Carried in blood by vitamin D–binding protein.",
+   transformation:"Liver CYP2R1 makes 25-hydroxyvitamin D (calcidiol, the blood-test marker). Kidney CYP27B1 then makes 1,25-dihydroxyvitamin D (calcitriol, the active hormone).",
+   function:"Calcitriol binds the vitamin D receptor and raises intestinal absorption of calcium and phosphate.",
+   storage:"Stored in fat tissue. Calcidiol's half-life is about 2–3 weeks, so levels change slowly.",
+   excretion:"CYP24A1 inactivates it to calcitroic acid, which is eliminated mainly in bile and feces."},
+  mix:{cofactor:50,stored:35,detox:15},watch:"Excess raises blood calcium (hypercalcemia). Toxicity is almost always from supplements, not sunlight. 1 mcg = 40 IU."},
+ {id:"vite",name:"Vitamin E",chem:"α-Tocopherol",group:"Fat-soluble vitamins",formula:"C29H50O2",flags:["aromatic","longChain"],unit:"mg",dose:15,rda:15,rdaLabel:"RDA",ul:1000,ulLabel:"UL (supplemental)",
+  stages:{absorption:"Micelle-dependent, like other fats. Efficiency varies widely and depends on how much fat is in the meal.",
+   transport:"Leaves the gut in chylomicrons. In the liver, α-tocopherol transfer protein selectively loads the natural RRR form into VLDL. Other forms are broken down preferentially.",
+   transformation:"Donates a hydrogen atom to neutralize lipid peroxyl radicals. Vitamin C can regenerate the resulting tocopheroxyl radical.",
+   function:"The main fat-phase antioxidant. It protects cell membranes and lipoproteins from oxidation.",
+   storage:"Builds up in adipose tissue and cell membranes.",
+   excretion:"CYP4F2 ω-hydroxylation and side-chain β-oxidation produce CEHC metabolites, which leave in urine. The unabsorbed portion leaves in feces."},
+  mix:{cofactor:40,stored:25,detox:25,unchanged:10},watch:"High-dose supplements can increase bleeding risk, especially alongside anticoagulants."},
+ {id:"vitk",name:"Vitamin K1",chem:"Phylloquinone",group:"Fat-soluble vitamins",formula:"C31H46O2",flags:["aromatic","longChain"],unit:"mcg",dose:100,rda:120,rdaLabel:"AI (men)",ul:null,
+  stages:{absorption:"Absorbed with fat via micelles and carried in chylomicrons.",
+   transport:"Distributed by lipoproteins, mostly to the liver.",
+   transformation:"Reduced to the hydroquinone form, then recycled by vitamin K epoxide reductase (VKOR), which is the target of warfarin.",
+   function:"Cofactor for γ-glutamyl carboxylase, which activates clotting factors II, VII, IX and X and bone proteins such as osteocalcin.",
+   storage:"Body stores are small and turn over within days.",
+   excretion:"The side chain is shortened and the product is glucuronidated, then excreted in bile and urine."},
+  mix:{cofactor:60,detox:35,stored:5},watch:"Changes in vitamin K intake alter the effect of warfarin. Keep intake consistent if you take it."},
+ {id:"b1",name:"Vitamin B1",chem:"Thiamine",group:"Water-soluble vitamins",formula:"C12H17N4OS",flags:["aromatic","nHet"],unit:"mg",dose:100,rda:1.2,rdaLabel:"RDA (men)",ul:null,
+  stages:{absorption:"Jejunum, via THTR1/THTR2 carriers. These saturate at a few mg, and passive diffusion takes over at high doses.",
+   transport:"Carried in plasma and red blood cells.",
+   transformation:"Thiamine pyrophosphokinase converts it to thiamine pyrophosphate (TPP).",
+   function:"TPP is a cofactor for pyruvate dehydrogenase, α-ketoglutarate dehydrogenase and transketolase, at the gateway into the Krebs cycle.",
+   storage:"Small, about 30 mg total, which lasts only a few weeks.",
+   excretion:"The kidneys filter the excess into urine, unchanged or as pyrimidine and thiazole breakdown products."},
+  mix:{cofactor:45,unchanged:50,detox:5},watch:null},
+ {id:"b2",name:"Vitamin B2",chem:"Riboflavin",group:"Water-soluble vitamins",formula:"C17H20N4O6",flags:["aromatic","nHet"],unit:"mg",dose:50,rda:1.3,rdaLabel:"RDA (men)",ul:null,
+  stages:{absorption:"Proximal small intestine, via RFVT transporters. Absorption saturates at roughly 27 mg per dose.",
+   transport:"Bound loosely to albumin and immunoglobulins in plasma.",
+   transformation:"Flavokinase converts it to FMN. FAD synthetase converts FMN to FAD.",
+   function:"FMN and FAD carry electrons in the electron transport chain, fatty-acid β-oxidation and the Krebs cycle.",
+   storage:"Minimal, with small amounts in the liver, kidney and heart.",
+   excretion:"Urine. This is why high doses turn urine bright yellow."},
+  mix:{cofactor:35,unchanged:60,detox:5},watch:null},
+ {id:"b3",name:"Vitamin B3",chem:"Nicotinic acid (niacin)",group:"Water-soluble vitamins",formula:"C6H5NO2",flags:["aromatic","nHet","carboxyl"],unit:"mg",dose:100,rda:16,rdaLabel:"RDA (men, mg NE)",ul:35,ulLabel:"UL (supplemental)",
+  stages:{absorption:"Rapidly absorbed from the stomach and small intestine: by carriers at low doses, by diffusion at high doses.",
+   transport:"Free in plasma; tissues take it up readily.",
+   transformation:"The Preiss–Handler pathway converts it to NAD⁺, which can be phosphorylated to NADP⁺.",
+   function:"NAD⁺/NADH carry electrons in glycolysis, the Krebs cycle and hundreds of redox enzymes. NAD⁺ is also consumed by sirtuins and PARPs.",
+   storage:"Held mostly as NAD in tissues. There's no dedicated store.",
+   excretion:"The liver conjugates it with glycine (nicotinuric acid) or methylates it (N¹-methylnicotinamide and pyridones), and these leave in urine."},
+  mix:{cofactor:45,detox:45,unchanged:10},watch:"Nicotinic acid above about 30 mg can cause flushing (GPR109A-driven prostaglandin release). Gram doses can stress the liver."},
+ {id:"b6",name:"Vitamin B6",chem:"Pyridoxine",group:"Water-soluble vitamins",formula:"C8H11NO3",flags:["aromatic","nHet"],unit:"mg",dose:25,rda:1.3,rdaLabel:"RDA (adults 19–50)",ul:100,ulLabel:"UL",
+  stages:{absorption:"Passive diffusion in the jejunum. Food forms are dephosphorylated first.",
+   transport:"Carried in plasma, mostly as PLP bound to albumin.",
+   transformation:"In the liver, pyridoxal kinase phosphorylates it and pyridox(am)ine-phosphate oxidase converts it to pyridoxal 5′-phosphate (PLP).",
+   function:"PLP is a cofactor for more than 140 enzymes, mostly in amino-acid transamination, neurotransmitter synthesis and heme synthesis.",
+   storage:"Mostly in muscle, bound to glycogen phosphorylase.",
+   excretion:"Oxidized to 4-pyridoxic acid, which leaves in urine."},
+  mix:{cofactor:55,detox:40,unchanged:5},watch:"Long-term high intake (well above the UL) can cause sensory nerve damage."},
+ {id:"b7",name:"Biotin",chem:"Vitamin B7",group:"Water-soluble vitamins",formula:"C10H16N2O3S",flags:["carboxyl"],unit:"mcg",dose:5000,rda:30,rdaLabel:"AI",ul:null,
+  stages:{absorption:"Small intestine, via the sodium-dependent multivitamin transporter (SMVT). Absorption is efficient even at high doses.",
+   transport:"Mostly free in plasma.",
+   transformation:"Covalently attached to carboxylase enzymes by holocarboxylase synthetase. Biotinidase recycles it when those enzymes are broken down.",
+   function:"Cofactor for pyruvate carboxylase, acetyl-CoA carboxylase, propionyl-CoA carboxylase and methylcrotonyl-CoA carboxylase.",
+   storage:"Minimal.",
+   excretion:"Urine, largely unchanged plus bisnorbiotin and biotin sulfoxide."},
+  mix:{cofactor:25,unchanged:65,detox:10},watch:"High-dose biotin (common in hair supplements) can skew lab tests that use biotin–streptavidin assays, such as troponin and thyroid panels. Tell your clinician before blood work."},
+ {id:"b9",name:"Folic acid",chem:"Synthetic folate (B9)",group:"Water-soluble vitamins",formula:"C19H19N7O6",flags:["aromatic","nHet","carboxyl","amine"],unit:"mcg",dose:400,rda:400,rdaFactor:1.7,rdaLabel:"RDA (mcg DFE)",ul:1000,ulLabel:"UL (folic acid)",
+  stages:{absorption:"Proximal small intestine, via the proton-coupled folate transporter (PCFT). About 85% is bioavailable with food, nearly 100% on an empty stomach.",
+   transport:"Circulates mainly as 5-methyl-THF once converted.",
+   transformation:"Dihydrofolate reductase (DHFR) reduces it to dihydrofolate, then tetrahydrofolate (THF), which becomes 5-methyl-THF. Human liver DHFR is slow, so large doses can leave unmetabolized folic acid in blood.",
+   function:"Carries one-carbon units for DNA nucleotide synthesis and for regenerating methionine (together with B12).",
+   storage:"The liver holds about half of the body's 10–30 mg.",
+   excretion:"Urine as folate and its breakdown products. Some goes into bile and is reabsorbed (enterohepatic recycling)."},
+  mix:{cofactor:60,stored:15,unchanged:20,detox:5},watch:"High folic acid intake can mask the anemia of B12 deficiency while nerve damage progresses. 1 mcg folic acid with food ≈ 1.7 mcg DFE."},
+ {id:"b12",name:"Vitamin B12",chem:"Cyanocobalamin",group:"Water-soluble vitamins",formula:"C63H88CoN14O14P",flags:["aromatic","nHet","phosphate"],unit:"mcg",dose:1000,rda:2.4,rdaLabel:"RDA",ul:null,
+  stages:{absorption:"Binds haptocorrin in the stomach, transfers to intrinsic factor in the duodenum, and is absorbed in the terminal ileum via cubilin. This route saturates at about 1.5–2 mcg per meal. Only about 1% of a large dose gets in by passive diffusion.",
+   transport:"Transcobalamin II delivers it to cells.",
+   transformation:"The cyanide group is removed and it becomes methylcobalamin (cytosol) and adenosylcobalamin (mitochondria).",
+   function:"Cofactor for methionine synthase (homocysteine → methionine) and methylmalonyl-CoA mutase.",
+   storage:"The liver holds 2–5 mg, enough to last years.",
+   excretion:"Secreted into bile and largely reabsorbed. The excess unbound fraction leaves in urine, and the unabsorbed bulk of a big dose leaves in feces."},
+  mix:{cofactor:15,stored:10,unchanged:75},watch:null},
+ {id:"vitc",name:"Vitamin C",chem:"Ascorbic acid",group:"Water-soluble vitamins",formula:"C6H8O6",flags:[],unit:"mg",dose:500,rda:90,rdaLabel:"RDA (men; women 75)",ul:2000,ulLabel:"UL",
+  stages:{absorption:"Small intestine, via sodium-dependent SVCT1 transporters. Saturable: about 70–90% is absorbed at normal intakes, falling below 50% above 1 g.",
+   transport:"Free in plasma. SVCT2 concentrates it in tissues such as the adrenal glands, white blood cells and brain.",
+   transformation:"Acts as an electron donor and becomes dehydroascorbate, which glutathione-dependent reduction recycles back.",
+   function:"Cofactor for the collagen prolyl/lysyl hydroxylases and for carnitine and norepinephrine synthesis. Also a water-phase antioxidant.",
+   storage:"The body pool is about 1.5 g at saturation. There's no dedicated storage tissue.",
+   excretion:"The kidneys reabsorb it up to a threshold. The excess leaves in urine, unchanged or as oxalate and threonate."},
+  mix:{cofactor:55,unchanged:35,detox:10},watch:"Above about 2 g/day, diarrhea is common, and oxalate may raise kidney-stone risk in susceptible people."},
+ {id:"mg",name:"Magnesium citrate",chem:"Trimagnesium dicitrate",group:"Minerals",formula:"Mg3(C6H5O7)2",flags:["carboxyl"],unit:"mg",elemental:"Mg",dose:200,rda:420,rdaLabel:"RDA (men, elemental)",ul:350,ulLabel:"UL (supplemental)",
+  stages:{absorption:"Dissociates in the gut. Mg²⁺ is absorbed through TRPM6/7 channels and between cells in the small intestine and colon, typically 30–40%, more when intake is low. Citrate is one of the better-absorbed forms.",
+   transport:"About 30% of blood magnesium is protein-bound. The rest is free ions or complexes.",
+   transformation:"Magnesium itself isn't changed. Citrate is a Krebs-cycle intermediate and is oxidized to CO₂ for energy.",
+   function:"Mg–ATP is the form of ATP most enzymes use. Magnesium is a cofactor for more than 300 enzymes and helps steady nerve and muscle excitability.",
+   storage:"About 50–60% is in bone. Most of the rest is in muscle and soft tissue.",
+   excretion:"The kidneys tune urinary loss. Unabsorbed magnesium stays in the gut, where it draws in water (a laxative effect)."},
+  mix:{cofactor:40,unchanged:50,fuel:10},watch:"The supplemental UL is set by diarrhea risk. People with reduced kidney function can build up magnesium."},
+ {id:"fe",name:"Iron",chem:"Ferrous sulfate",group:"Minerals",formula:"FeSO4",flags:[],unit:"mg",elemental:"Fe",dose:65,rda:8,rdaLabel:"RDA (men; women 19–50: 18)",ul:45,ulLabel:"UL",
+  stages:{absorption:"Duodenum: Fe²⁺ enters through DMT1. Usually about 10–15% is absorbed, more when stores are low. Hepcidin, the body's iron hormone, restricts uptake.",
+   transport:"Exported by ferroportin, oxidized by hephaestin, then carried by transferrin.",
+   transformation:"Built into hemoglobin, myoglobin, cytochromes and iron–sulfur enzymes.",
+   function:"Oxygen transport and storage, and electron transfer in the respiratory chain.",
+   storage:"Ferritin and hemosiderin in the liver, spleen and bone marrow.",
+   excretion:"There's no active excretion pathway. About 1–2 mg/day is lost through shed cells and bleeding, and unabsorbed iron leaves in feces (dark stools)."},
+  mix:{cofactor:12,stored:3,unchanged:85},watch:"Iron overdose is a leading cause of fatal poisoning in young children. Keep supplements out of reach."},
+ {id:"ca",name:"Calcium carbonate",chem:"CaCO₃",group:"Minerals",formula:"CaCO3",flags:[],unit:"mg",elemental:"Ca",dose:500,rda:1000,rdaLabel:"RDA (adults 19–50)",ul:2500,ulLabel:"UL (19–50)",
+  stages:{absorption:"Needs stomach acid to dissolve, so take it with food. Absorbed in the duodenum via TRPV6 (calcitriol-dependent) and between cells. About 25–35% is absorbed, best at ≤500 mg per dose.",
+   transport:"About half circulates as free Ca²⁺. The rest is bound to albumin or complexed.",
+   transformation:"Carbonate neutralizes stomach acid and becomes CO₂, which can cause burping. Calcium isn't changed.",
+   function:"Bone and tooth mineral, cell signaling, muscle contraction and blood clotting.",
+   storage:"About 99% is in bone and teeth as hydroxyapatite.",
+   excretion:"Urine, under parathyroid hormone control. Unabsorbed calcium leaves in feces."},
+  mix:{cofactor:30,unchanged:70},watch:"Very high intakes can contribute to kidney stones and constipation."},
+ {id:"creatine",name:"Creatine",chem:"Creatine monohydrate",group:"Other supplements",formula:"C4H9N3O2·H2O",flags:["carboxyl","amine"],unit:"mg",dose:5000,rda:null,ul:null,
+  stages:{absorption:"Nearly completely absorbed from the small intestine.",
+   transport:"Muscle takes it up through the creatine transporter SLC6A8, helped by insulin.",
+   transformation:"Creatine kinase phosphorylates it to phosphocreatine.",
+   function:"Phosphocreatine quickly regenerates ATP during the first seconds of intense effort.",
+   storage:"About 95% sits in skeletal muscle, around 120 g in a 70 kg adult.",
+   excretion:"About 1.7% per day converts non-enzymatically to creatinine, which leaves in urine. When muscle is saturated, the excess is excreted directly."},
+  mix:{cofactor:60,unchanged:25,detox:15},watch:"Raises blood creatinine readings without kidney damage, which can confuse kidney-function tests."},
+ {id:"caffeine",name:"Caffeine",chem:"1,3,7-Trimethylxanthine",group:"Other supplements",formula:"C8H10N4O2",flags:["aromatic","nHet"],unit:"mg",dose:200,rda:null,ul:400,ulLabel:"FDA: generally safe daily amount",
+  stages:{absorption:"About 99% is absorbed within roughly 45 minutes from the stomach and small intestine.",
+   transport:"Spreads through total body water and crosses the blood–brain barrier and placenta.",
+   transformation:"Liver CYP1A2 removes methyl groups: about 84% becomes paraxanthine, 12% theobromine and 4% theophylline.",
+   function:"Blocks adenosine receptors. It has no nutrient role.",
+   storage:"None. The half-life is about 3–6 hours: longer in pregnancy or on oral contraceptives, shorter in smokers.",
+   excretion:"Urine as methylxanthines and methyluric acids. Only 1–3% leaves unchanged."},
+  mix:{detox:97,unchanged:3},watch:null},
+ {id:"melatonin",name:"Melatonin",chem:"N-Acetyl-5-methoxytryptamine",group:"Other supplements",formula:"C13H16N2O2",flags:["aromatic","nHet"],unit:"mg",dose:3,rda:null,ul:null,
+  stages:{absorption:"Absorbed quickly, but heavy first-pass liver metabolism leaves oral bioavailability at about 15% (with a wide range).",
+   transport:"Partly bound to albumin. Crosses into the brain easily.",
+   transformation:"CYP1A2 makes 6-hydroxymelatonin, which is then mostly sulfated (some glucuronidated).",
+   function:"Activates MT1/MT2 receptors, which signal darkness to the circadian system.",
+   storage:"None. The half-life is about 40–60 minutes.",
+   excretion:"Urine, mainly as 6-sulfatoxymelatonin."},
+  mix:{detox:95,unchanged:5},watch:null},
+ {id:"coq10",name:"Coenzyme Q10",chem:"Ubiquinone",group:"Other supplements",formula:"C59H90O4",flags:["longChain"],unit:"mg",dose:100,rda:null,ul:null,
+  stages:{absorption:"Poor and slow (a few percent), and it needs dietary fat. It travels in chylomicrons and peaks in blood about 6 hours after a dose.",
+   transport:"Carried in LDL and VLDL, mostly in its reduced form, ubiquinol.",
+   transformation:"Shuttles between ubiquinone and ubiquinol. The body also makes its own via the mevalonate pathway, which statins inhibit.",
+   function:"Carries electrons from complexes I and II to complex III. Also a lipid antioxidant.",
+   storage:"Cell membranes, especially in the heart, liver and kidney.",
+   excretion:"Most of an oral dose is never absorbed and leaves in feces. The absorbed part is excreted via bile."},
+  mix:{unchanged:75,cofactor:15,stored:5,detox:5},watch:null},
+ {id:"epa",name:"Omega-3 (EPA)",chem:"Eicosapentaenoic acid",group:"Other supplements",formula:"C20H30O2",flags:["longChain","carboxyl"],unit:"mg",dose:1000,rda:null,ul:5000,ulLabel:"FDA: EPA+DHA from supplements",
+  stages:{absorption:"Lipases free it from triglyceride or ethyl-ester form. Ethyl esters absorb poorly without a fatty meal. It's then packed into micelles, re-esterified and sent out in chylomicrons.",
+   transport:"Lipoproteins carry it. Over weeks it's built into cell-membrane phospholipids.",
+   transformation:"Converted to signaling lipids (3-series prostaglandins, resolvins) or elongated to DPA.",
+   function:"Shapes membrane properties, produces inflammation-resolving mediators and lowers triglycerides.",
+   storage:"Adipose tissue and cell membranes.",
+   excretion:"Like any fatty acid, β-oxidation burns it to CO₂ and water, releasing about 9 kcal/g."},
+  mix:{fuel:50,cofactor:35,stored:15},watch:"High doses can modestly increase bleeding risk."},
+ {id:"curcumin",name:"Curcumin",chem:"From turmeric",group:"Other supplements",formula:"C21H20O6",flags:["aromatic"],unit:"mg",dose:500,rda:null,ul:null,
+  stages:{absorption:"Very poor. Often less than 1% reaches blood as free curcumin.",
+   transport:"The small absorbed fraction is bound to plasma proteins.",
+   transformation:"The gut wall and liver rapidly reduce it (to tetrahydrocurcumin) and conjugate it with glucuronide or sulfate. Piperine from black pepper slows glucuronidation and raises blood levels.",
+   function:"No essential role. Its anti-inflammatory signaling effects are under study.",
+   storage:"None.",
+   excretion:"Mostly leaves in feces unchanged. Conjugates go out in bile."},
+  mix:{unchanged:75,detox:25},watch:"Formulas boosted with piperine can also raise levels of some prescription drugs."},
+ {id:"carnitine",name:"L-Carnitine",chem:"β-Hydroxy-γ-trimethylaminobutyrate",group:"Other supplements",formula:"C7H15NO3",flags:["carboxyl","amine"],unit:"mg",dose:1000,rda:null,ul:null,
+  stages:{absorption:"Only about 14–18% of a supplement dose is absorbed (food carnitine does much better), and the fraction falls as the dose rises.",
+   transport:"Free in plasma. Muscle takes it up through OCTN2.",
+   transformation:"Gut bacteria turn unabsorbed carnitine into trimethylamine, which the liver (FMO3) oxidizes to TMAO.",
+   function:"Shuttles long-chain fatty acids into mitochondria for β-oxidation, as acylcarnitines.",
+   storage:"About 95% is in skeletal muscle.",
+   excretion:"The kidneys reabsorb it strongly. The excess, plus TMAO, leaves in urine."},
+  mix:{fermented:55,cofactor:20,unchanged:15,detox:10},watch:null},
+ {id:"glucose",name:"Glucose",chem:"Dextrose (fuel reference)",group:"Reference compounds",formula:"C6H12O6",flags:[],unit:"mg",dose:10000,rda:null,ul:null,
+  stages:{absorption:"Small intestine: SGLT1 brings it into cells and GLUT2 releases it to blood. Absorption is nearly complete.",
+   transport:"Free in blood. Insulin drives uptake into muscle and fat via GLUT4.",
+   transformation:"Glycolysis → pyruvate → acetyl-CoA → Krebs cycle → electron transport chain.",
+   function:"The main fuel. It also supplies carbon for building other molecules.",
+   storage:"Glycogen in the liver and muscle. Excess is converted to fat.",
+   excretion:"Leaves as CO₂ (breath) and water. It appears in urine only above the kidney threshold."},
+  mix:{fuel:95,stored:5},watch:null},
+ {id:"erythritol",name:"Erythritol",chem:"Sugar alcohol (polyol)",group:"Reference compounds",formula:"C4H10O4",flags:[],unit:"mg",dose:10000,rda:null,ul:null,
+  stages:{absorption:"About 90% is absorbed in the small intestine by passive diffusion.",
+   transport:"Distributed in body water.",
+   transformation:"Essentially none. Human enzymes don't recognize it.",
+   function:"None; it's a sweetener. It looks sugar-like on paper, which makes it a good test of formula-only prediction.",
+   storage:"None.",
+   excretion:"Leaves in urine unchanged within about 24 hours. The unabsorbed ~10% reaches the colon."},
+  mix:{unchanged:95,fermented:5},watch:null}
+];
+
+const SMILES={vita:"CC1=C(C(C)(C)CCC1)/C=C/C(C)=C/C=C/C(C)=C/CO",vitd:"C=C1CC[C@H](O)C/C1=C/C=C1\\CCC[C@]2(C)[C@@H]([C@H](C)CCCC(C)C)CC[C@@H]12",
+ vite:"CC1=C(C)C2=C(CC[C@@](C)(CCC[C@H](C)CCC[C@H](C)CCCC(C)C)O2)C(C)=C1O",vitk:"CC1=C(C/C=C(\\C)CCC[C@H](C)CCC[C@H](C)CCCC(C)C)C(=O)c2ccccc2C1=O",
+ b1:"Cc1ncc(C[n+]2csc(CCO)c2C)c(N)n1",b2:"Cc1cc2nc3c(=O)[nH]c(=O)nc-3n(C[C@H](O)[C@H](O)[C@H](O)CO)c2cc1C",b3:"OC(=O)c1cccnc1",b6:"Cc1ncc(CO)c(CO)c1O",
+ b7:"OC(=O)CCCC[C@@H]1SC[C@@H]2NC(=O)N[C@H]12",b9:"Nc1nc2ncc(CNc3ccc(cc3)C(=O)N[C@@H](CCC(O)=O)C(O)=O)nc2c(=O)[nH]1",vitc:"OC[C@H](O)[C@H]1OC(=O)C(O)=C1O",
+ mg:"[Mg+2].[Mg+2].[Mg+2].[O-]C(=O)CC(O)(CC([O-])=O)C([O-])=O.[O-]C(=O)CC(O)(CC([O-])=O)C([O-])=O",fe:"[Fe+2].[O-]S([O-])(=O)=O",ca:"[Ca+2].[O-]C([O-])=O",
+ creatine:"CN(CC(=O)O)C(=N)N.O",caffeine:"Cn1cnc2c1c(=O)n(C)c(=O)n2C",melatonin:"COc1ccc2[nH]cc(CCNC(C)=O)c2c1",
+ coq10:"COC1=C(OC)C(=O)C(C/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)CC/C=C(\\C)C)=C(C)C1=O",
+ epa:"CC/C=C\\C/C=C\\C/C=C\\C/C=C\\C/C=C\\CCCC(=O)O",curcumin:"COc1cc(/C=C/C(=O)CC(=O)/C=C/c2ccc(O)c(OC)c2)ccc1O",carnitine:"C[N+](C)(C)C[C@@H](O)CC(=O)[O-]",
+ glucose:"OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",erythritol:"OC[C@@H](O)[C@@H](O)CO"};
+PRESETS.forEach(p=>{p.smiles=SMILES[p.id]||"";});
+
+/* ---------- Structure engine (RDKit.js) ---------- */
+const ZSYM={1:"H",3:"Li",5:"B",6:"C",7:"N",8:"O",9:"F",11:"Na",12:"Mg",14:"Si",15:"P",16:"S",17:"Cl",19:"K",20:"Ca",24:"Cr",25:"Mn",26:"Fe",27:"Co",29:"Cu",30:"Zn",34:"Se",35:"Br",42:"Mo",53:"I"};
+const AUTO_FEATURES=new Set(["carboxyl","ester","amine","aromatic","nHet","phosphate","longChain"]);
+const SMARTS={
+  carboxyl:["[#6][CX3](=O)[OX2H1,OX1-]"],
+  ester:["[#6][CX3](=O)[OX2][#6]"],
+  amine:["[NX3;!$(N-[#6,#16]=[#7,#8,#16]);!$(N-a);!a]","[NX4+]"],
+  nHet:["[#7;R]"],
+  phosphate:["[PX4](=O)([OX2,OX1-])[OX2,OX1-]"],
+  longChain:["[#6;!R;!$([#6]=[#8])]~[#6;!R;!$([#6]=[#8])]~[#6;!R;!$([#6]=[#8])]~[#6;!R;!$([#6]=[#8])]~[#6;!R;!$([#6]=[#8])]~[#6;!R;!$([#6]=[#8])]"]
+};
+let RD=null,rdStatus="loading";
+const rdCache=new Map();
+function initEngine(){
+  if(typeof window.initRDKitModule!=="function"){rdStatus="failed";return;}
+  window.initRDKitModule({locateFile:f=>"vendor/rdkit/"+f}).then(m=>{RD=m;rdStatus="ready";render();}).catch(()=>{rdStatus="failed";render();});
+}
+function hill(counts,charge){
+  const keys=Object.keys(counts).sort((a,b)=>{const r=x=>x==="C"?0:x==="H"?1:2;return r(a)-r(b)||a.localeCompare(b);});
+  const hasC=!!counts.C;
+  const ord=hasC?keys:Object.keys(counts).sort();
+  let s=ord.map(k=>k+(counts[k]>1?counts[k]:"")).join("");
+  if(charge) s+=(Math.abs(charge)>1?Math.abs(charge):"")+(charge>0?"+":"-");
+  return s;
+}
+function analyzeSmiles(smi){
+  if(rdCache.has(smi)) return rdCache.get(smi);
+  const mol=RD.get_mol(smi);
+  if(!mol||(mol.is_valid&&!mol.is_valid())){if(mol)mol.delete();throw new Error("Couldn't read that SMILES. Check brackets, ring-closure numbers and element symbols.");}
+  try{
+    const desc=JSON.parse(mol.get_descriptors());
+    const js=JSON.parse(mol.get_json());
+    const def=(js.defaults&&js.defaults.atom)||{z:6,impHs:0,chg:0};
+    const counts={};let charge=0;
+    for(const m of js.molecules)for(const a of m.atoms){
+      const z=a.z!=null?a.z:def.z;const el=ZSYM[z];
+      if(!el) throw new Error("Element with atomic number "+z+" isn't supported yet.");
+      counts[el]=(counts[el]||0)+1;
+      const h=a.impHs!=null?a.impHs:def.impHs; if(h) counts.H=(counts.H||0)+h;
+      charge+=(a.chg!=null?a.chg:def.chg)||0;
+    }
+    const match=s=>{const q=RD.get_qmol(s);if(!q)return false;try{return mol.get_substruct_match(q)!=="{}";}finally{q.delete();}};
+    const feats=new Set();
+    for(const k in SMARTS) if(SMARTS[k].some(match)) feats.add(k);
+    if(desc.NumAromaticRings>0) feats.add("aromatic");
+    const glyco=match("[C;R]([O;R])[O;!R][#6]");
+    let svg="";try{svg=mol.get_svg(340,230);}catch(e){}
+    const res={counts,charge,desc,feats,glyco,svg,formula:hill(counts,charge)};
+    rdCache.set(smi,res);
+    return res;
+  } finally { mol.delete(); }
+}
+
+/* ---------- Formula parsing ---------- */
+function parseFormula(raw){
+  let s=String(raw||"").replace(/\s+/g,"");
+  if(!s) throw new Error("Enter a formula, e.g. C6H12O6.");
+  s=s.replace(/\^?\d*[+\-−]+$/,""); // strip trailing charge
+  const parts=s.split(/[·•*.]/).filter(Boolean);
+  const total={};
+  for(const part of parts){
+    const m=part.match(/^(\d+)(.*)$/);
+    const coef=m?parseInt(m[1],10):1;
+    const body=m?m[2]:part;
+    const c=parseGroup(body);
+    for(const el in c) total[el]=(total[el]||0)+c[el]*coef;
+  }
+  if(!Object.keys(total).length) throw new Error("No elements found.");
+  return total;
+}
+function parseGroup(str){
+  let i=0;
+  function num(){let st=i;while(i<str.length&&/\d/.test(str[i]))i++;return st===i?1:parseInt(str.slice(st,i),10);}
+  function seq(close){
+    const out={};
+    while(i<str.length){
+      const ch=str[i];
+      if(ch==="("||ch==="["){i++;const inner=seq(ch==="("?")":"]");const n=num();for(const k in inner)out[k]=(out[k]||0)+inner[k]*n;}
+      else if(ch===")"||ch==="]"){if(ch!==close)throw new Error("Unmatched bracket.");i++;return out;}
+      else if(/[A-Z]/.test(ch)){
+        let el=ch;i++;
+        if(i<str.length&&/[a-z]/.test(str[i])){el+=str[i];i++;}
+        if(!(el in MASS))throw new Error("Unknown or unsupported element “"+el+"”.");
+        const n=num();out[el]=(out[el]||0)+n;
+      } else throw new Error("Unexpected character “"+ch+"”.");
+    }
+    if(close)throw new Error("Missing closing bracket.");
+    return out;
+  }
+  return seq(null);
+}
+function formatFormula(f){
+  return String(f).split(/[·•*.]/).map(p=>{
+    const m=p.match(/^(\d+)(.*)$/);const lead=m?m[1]:"";const body=m?m[2]:p;
+    return lead+body.replace(/(\d+)/g,"<sub>$1</sub>");
+  }).join("·");
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));}
+
+/* ---------- Descriptors ---------- */
+function describe(counts,rd){
+  const g=k=>counts[k]||0;
+  const C=g("C"),H=g("H"),N=g("N"),O=g("O"),P=g("P"),S=g("S");
+  let mw=0;for(const el in counts)mw+=MASS[el]*counts[el];
+  const hal=HALOGENS.reduce((a,k)=>a+g(k),0);
+  const metals=Object.keys(counts).filter(e=>METALS.has(e));
+  const organic=C>0&&H>0;
+  const polarity=organic?(O+N+2*P+0.5*S)/C:Infinity;
+  let sol;
+  const logP=rd?rd.CrippenClogP:null;
+  if(!organic) sol="ionic";
+  else if(rd){ sol=logP<=1?"water":(logP>=3?"fat":"amphi"); }
+  else if(polarity>=0.45) sol="water";
+  else if(polarity<=0.2&&C>=12) sol="fat";
+  else sol="amphi";
+  const chOnly=Object.keys(counts).every(e=>["C","H","O"].includes(e));
+  const sugarLike=chOnly&&C>=3&&C<=7&&O/C>=0.8&&O/C<=1.05&&H/C>=1.6&&H/C<=2.6;
+  const polyol=sugarLike&&H===2*C+2&&O===C;
+  const monovalentH = H + hal + (g("Na")+g("K")+g("Li"));
+  const dou=organic?C-monovalentH/2+N/2+1:null;
+  const o2bio=Math.max(0,C+H/4-O/2-0.75*N+1.5*S+1.25*P);
+  const kJmol=440*o2bio;
+  const kcalPerG=organic?kJmol/mw/4.184:0;
+  return {counts,C,H,N,O,P,S,mw,hal,metals,organic,polarity,sol,sugarLike,polyol,dou,o2bio,kcalPerG,
+    hba:rd?rd.lipinskiHBA:N+O, hbd:rd?rd.lipinskiHBD:null, logP, tpsa:rd?rd.tpsa:null, rotb:rd?rd.NumRotatableBonds:null,
+    aromRings:rd?rd.NumAromaticRings:null, stereo:rd?rd.NumAtomStereoCenters:null, rd:!!rd};
+}
+
+/* ---------- Heuristic prediction ---------- */
+function predict(d,flags){
+  const f=k=>flags.has(k);
+  const s={fuel:0.2,cofactor:0.2,stored:0.2,detox:0.2,fermented:0.1,unchanged:0.2};
+  const why=[];
+  if(!d.organic){s.cofactor+=3;s.unchanged+=3;s.fuel=0;s.fermented=0;why.push("Inorganic salt: dissociates into ions, which are absorbed only partly and aren't burned.");}
+  else if(d.metals.length){
+    if(d.C<=12){s.cofactor+=2.5;s.unchanged+=2.5;s.fuel+=1;why.push("Metal salt with a small organic counter-ion: the mineral is partly absorbed, and the organic part may be burned.");}
+    else {s.cofactor+=3;s.unchanged+=2;s.stored+=1;why.push("Large metal-containing organic complex: looks like a cofactor that needs a dedicated transporter.");}
+  }
+  if(d.polyol){s.unchanged+=3;s.fermented+=2;s.fuel+=0.5;why.push("Fully saturated polyol (sugar alcohol): enzymes often don't recognize these.");}
+  else if(d.sugarLike&&!f("mirror")){s.fuel+=5;s.stored+=1;why.push("Simple-sugar composition (CₙH₂ₙOₙ-like): likely enters glycolysis.");}
+  if(f("alphaGly")){s.fuel+=4;s.stored+=1;why.push("α-glycosidic links: digestive amylases can split them.");}
+  if(f("betaGly")){s.fermented+=4;s.unchanged+=2;s.fuel*=0.3;why.push("β-glycosidic links: humans lack the enzyme, so gut bacteria get them.");}
+  if(f("longChain")){
+    if(f("carboxyl")||f("ester")){s.fuel+=3;s.cofactor+=2;s.stored+=2;why.push("Fatty-acid-like chain: β-oxidation can burn it, or it's stored as fat.");}
+    else {s.stored+=2;s.cofactor+=1;s.detox+=1.5;why.push("Hydrocarbon tail without an acid: stays in membranes and fat until slowly oxidized.");}
+  }
+  if(f("amine")&&f("carboxyl")&&!f("aromatic")&&d.C<=12){s.cofactor+=3;s.fuel+=1.5;s.unchanged+=0.5;why.push("Amino-acid-like: used as a building block, or deaminated and burned.");}
+  if(f("carboxyl")&&!f("longChain")&&d.organic&&d.C<=7&&d.N===0){s.fuel+=2;why.push("Small organic acid: resembles Krebs-cycle intermediates.");}
+  if(f("phosphate")){s.cofactor+=1.5;why.push("Phosphate group: typical of nucleotide and coenzyme chemistry.");}
+  if(f("nHet")){s.cofactor+=1.5;s.detox+=1.5;why.push("Nitrogen heterocycle: common in coenzymes, but also a target for liver enzymes.");}
+  if(f("aromatic")){s.detox+=2.5;s.fuel*=0.6;why.push("Aromatic ring: humans can't break these open for energy, so CYP enzymes oxidize and conjugate them.");}
+  if(d.hal>0){s.detox+=2;s.unchanged+=2.5;s.fuel*=0.2;why.push("Halogen atoms: a hallmark of synthetic compounds, which are handled as foreign and excreted.");}
+  if(f("mirror")){s.fuel=0;s.unchanged+=3;s.fermented+=1;why.push("Mirror-image form: enzymes are chiral and usually ignore it.");}
+  if(d.sol==="fat"){s.stored+=2;s.detox+=1;why.push("Low polarity: fat-soluble, so it needs dietary fat to absorb and tends to accumulate.");
+    if(d.C>=40){s.unchanged+=3;why.push("Very large lipophilic molecule: oral absorption is usually poor.");}}
+  if(d.sol==="water"){s.unchanged+=1;}
+  if(d.mw>500&&(d.sol==="water"||d.sol==="amphi")&&d.organic){s.unchanged+=2.5;why.push("MW over 500 and polar: passive gut absorption is poor without a specific transporter.");}
+  else if(d.tpsa!=null&&d.tpsa>140&&d.organic&&!d.metals.length){s.unchanged+=2;why.push("Polar surface area over 140 Å²: too polar to cross gut cells passively, so a transporter is needed.");}
+  if(d.rd&&d.logP!=null&&d.sol==="fat") why.push("Crippen logP "+d.logP.toFixed(1)+", calculated from the structure.");
+  const tot=Object.values(s).reduce((a,b)=>a+b,0);
+  const mix={};for(const k in s)mix[k]=Math.round(s[k]/tot*1000)/10;
+  return {mix,why};
+}
+
+function topFate(mix){let best=null,v=-1;for(const fa of FATES){const x=mix[fa.k]||0;if(x>v){v=x;best=fa;}}return best;}
+
+function heuristicStages(d,flags,mix){
+  const f=k=>flags.has(k);
+  let absorption,transport,transformation,func,storage,excretion;
+  if(!d.organic){absorption="Dissolves into ions in the gut. Ions need specific channels or transporters, so absorption is usually partial and regulated by the body's needs.";transport="Free ions or protein-bound in blood.";}
+  else if(f("betaGly")){absorption="Mostly not absorbed: human digestive enzymes can't cut β-glycosidic bonds.";transport="Passes through to the colon.";}
+  else if(d.sol==="fat"){absorption="Needs bile salts and dietary fat to form micelles. Absorbed in the small intestine and packed into chylomicrons.";transport="Enters the lymph, then is carried by lipoproteins.";}
+  else if(d.mw>500){absorption="Too large and polar for easy passive diffusion. Absorption depends on a dedicated transporter, so expect it to be low.";transport="If absorbed, likely protein-bound in plasma.";}
+  else if(d.sol==="water"){absorption="Water-soluble and small: likely absorbed by carrier transporters in the small intestine. Expect saturation at high doses.";transport="Dissolved freely in plasma.";}
+  else {absorption="Moderate polarity: probably crosses gut cells by passive diffusion, though the liver may metabolize much of it before it reaches the circulation (first-pass).";transport="Partly bound to albumin in plasma.";}
+  const top=topFate(mix).k;
+  transformation={
+    fuel:"Probably converted into a central-metabolism intermediate (glucose-6-phosphate, pyruvate or acetyl-CoA) and oxidized.",
+    cofactor:"Probably activated by attaching a phosphate or nucleotide, or incorporated into a protein or tissue.",
+    stored:"Likely esterified or otherwise packaged for storage, with slow turnover.",
+    detox:"Phase I (CYP oxidation) then Phase II (glucuronide/sulfate conjugation) to make it water-soluble.",
+    fermented:"Colonic bacteria ferment it into short-chain fatty acids and gases.",
+    unchanged:"Little or no enzymatic change expected."}[top];
+  func={fuel:"Supplies ATP and possibly carbon for building other molecules.",cofactor:"Likely serves as a cofactor, mineral or structural component.",stored:"Acts slowly from tissue reserves.",detox:"Any effect comes from the parent molecule or its metabolites. No nutrient role is implied.",fermented:"Feeds gut microbes, and the short-chain fatty acids they make give the host a little energy.",unchanged:"Little biological role is likely from the formula alone."}[top];
+  if(d.sol==="fat") storage="Likely accumulates in adipose tissue and the liver. Repeated large doses can build up.";
+  else if(!d.organic) storage="Depends on the mineral: bone for calcium and magnesium, ferritin for iron. Excess is usually tightly regulated.";
+  else storage="Little storage expected. Excess is cleared within hours to days.";
+  if((mix.unchanged||0)>40&&(d.mw>500||d.sol==="fat"||f("betaGly")||!d.organic)) excretion="Mostly feces, since much of the dose is never absorbed.";
+  else if(d.sol==="fat"||d.mw>450) excretion="Mainly bile and feces, after conjugation.";
+  else excretion="Mainly urine. The kidneys filter small water-soluble molecules efficiently.";
+  return {absorption,transport,transformation,function:func,storage,excretion};
+}
+
+/* ---------- State & UI ---------- */
+const $=id=>document.getElementById(id);
+const state={presetId:"vitc",edited:false,flags:new Set(),dose:500,mode:"smiles"};
+
+function buildLibrary(){
+  const q=$("libFilter").value.trim().toLowerCase();
+  const groups={};
+  PRESETS.forEach(p=>{
+    const hay=(p.name+" "+p.chem+" "+p.group+" "+p.formula).toLowerCase();
+    if(q&&!hay.includes(q))return;
+    (groups[p.group]=groups[p.group]||[]).push(p);
+  });
+  const html=Object.keys(groups).map(g=>'<div><p class="grp">'+esc(g)+'</p><div class="items">'+groups[g].map(p=>'<button type="button" data-id="'+p.id+'" aria-pressed="'+(state.presetId===p.id&&!state.edited)+'">'+esc(p.name)+'</button>').join("")+'</div></div>').join("");
+  $("lib").innerHTML=html||'<p class="muted" style="margin:0;font-size:13px">No match. Type the formula below instead.</p>';
+}
+function buildChecks(){
+  $("chks").innerHTML=FEATURES.map(fe=>'<label class="chk"><input type="checkbox" id="f_'+fe.k+'" data-k="'+fe.k+'"'+(state.flags.has(fe.k)?" checked":"")+'><span>'+esc(fe.label)+'</span><em class="auto" hidden>auto</em></label>').join("");
+}
+function syncChecks(effective,detected){
+  FEATURES.forEach(fe=>{
+    const el=$("f_"+fe.k);if(!el)return;
+    const auto=!!detected&&AUTO_FEATURES.has(fe.k);
+    el.checked=effective.has(fe.k);el.disabled=auto;
+    el.parentElement.querySelector(".auto").hidden=!auto;
+  });
+}
+function setMode(m){
+  state.mode=m;
+  $("modeSmiles").setAttribute("aria-pressed",String(m==="smiles"));
+  $("modeFormula").setAttribute("aria-pressed",String(m==="formula"));
+  $("smilesField").hidden=m!=="smiles";
+  render();
+}
+function loadPreset(id){
+  const p=PRESETS.find(x=>x.id===id);if(!p)return;
+  state.presetId=id;state.edited=false;state.flags=new Set(p.flags);state.dose=p.dose;
+  $("nameIn").value=p.name;$("formulaIn").value=p.formula;$("doseIn").value=p.dose;$("smilesIn").value=p.smiles;
+  buildChecks();buildLibrary();render();
+}
+function markEdited(){if(state.presetId&&!state.edited){state.edited=true;buildLibrary();}}
+
+$("lib").addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(b)loadPreset(b.dataset.id);});
+$("libFilter").addEventListener("input",buildLibrary);
+$("modeSmiles").addEventListener("click",()=>setMode("smiles"));
+$("modeFormula").addEventListener("click",()=>setMode("formula"));
+$("smilesIn").addEventListener("input",()=>{markEdited();render();});
+$("formulaIn").addEventListener("input",()=>{markEdited();render();});
+$("nameIn").addEventListener("input",()=>{render();});
+$("chks").addEventListener("change",e=>{const k=e.target.dataset.k;if(!k)return;e.target.checked?state.flags.add(k):state.flags.delete(k);markEdited();render();});
+$("doseIn").addEventListener("input",()=>{state.dose=parseFloat($("doseIn").value)||0;render();});
+
+/* ---------- Render ---------- */
+function fmt(n,dig){if(!isFinite(n))return"–";if(n!==0&&Math.abs(n)<0.01)return"<0.01";return n.toLocaleString(undefined,{maximumFractionDigits:dig==null?2:dig});}
+function barHTML(mix){return '<div class="bar" role="img" aria-label="'+FATES.filter(fa=>mix[fa.k]>0).map(fa=>fa.label+" "+Math.round(mix[fa.k])+"%").join(", ")+'">'+FATES.map(fa=>{const v=mix[fa.k]||0;return v>0?'<span style="width:'+v+'%;background:var('+fa.c+')" title="'+fa.label+': '+Math.round(v)+'%"></span>':"";}).join("")+"</div>";}
+function chip(k,v,color){return '<div class="chip" style="border-left-color:'+(color||"var(--line)")+'"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
+
+function render(){
+  const preset=PRESETS.find(x=>x.id===state.presetId);
+  const usePreset=preset&&!state.edited;
+  const name=$("nameIn").value.trim()||"Custom compound";
+  const formula=$("formulaIn").value;
+  const unit=usePreset?preset.unit:"mg";
+  $("unitOut").value=unit;
+  $("doseHint").textContent=usePreset&&preset.elemental?"Amount of elemental "+preset.elemental+", as on most labels.":(usePreset?"":"Custom compounds use mg of the whole compound.");
+  // engine status line
+  const eng=$("engine");
+  eng.className="engine "+rdStatus;
+  eng.querySelector("span").textContent=rdStatus==="ready"?"Structure engine ready (RDKit)":rdStatus==="failed"?"The structure engine couldn't load. Formula mode still works.":"Loading structure engine…";
+
+  // structure path
+  const smi=$("smilesIn").value.trim();
+  let rdRes=null;
+  $("smilesErr").textContent="";
+  if(state.mode==="smiles"&&smi&&RD){
+    try{rdRes=analyzeSmiles(smi);}
+    catch(err){$("smilesErr").textContent=err.message;$("results").innerHTML='<section class="panel"><p class="muted" style="margin:0">Fix the SMILES to see results, or switch to Formula only.</p></section>';return;}
+  }
+  const fIn=$("formulaIn");
+  if(rdRes){fIn.value=rdRes.formula;fIn.readOnly=true;$("formulaHint").textContent="Calculated from the structure.";}
+  else {fIn.readOnly=false;$("formulaHint").textContent=state.mode==="smiles"&&!smi?"No structure entered, so the formula is used. Paste a SMILES above for structure-based analysis.":"Supports groups and hydrates: Mg3(C6H5O7)2, C4H9N3O2·H2O";}
+  const formulaNow=fIn.value;
+
+  // effective feature set
+  let flags;
+  if(rdRes){
+    flags=new Set(rdRes.feats);
+    ["alphaGly","betaGly","mirror"].forEach(k=>{if(state.flags.has(k))flags.add(k);});
+    $("featHint").textContent="Detected from the structure: "+(rdRes.feats.size?[...rdRes.feats].map(k=>FEATURES.find(f=>f.k===k).label.split(" (")[0].toLowerCase()).join(", "):"none of the tracked groups")+"."+(rdRes.glyco?" A glycosidic bond was found, so tick α or β to say which kind.":"")+" Sugar-link type and mirror-image form stay manual.";
+  } else {
+    flags=state.flags;
+    $("featHint").textContent="A formula can't show structure, so tick what applies. These refine the prediction.";
+  }
+  syncChecks(flags,!!rdRes);
+
+  let d;
+  try{d=rdRes?describe(rdRes.counts,rdRes.desc):describe(parseFormula(formulaNow));$("formulaErr").textContent="";}
+  catch(err){$("formulaErr").textContent=err.message;$("results").innerHTML='<section class="panel"><p class="muted" style="margin:0">Fix the formula to see results.</p></section>';return;}
+
+  const pred=predict(d,flags);
+  const mix=usePreset?Object.assign({fuel:0,cofactor:0,stored:0,detox:0,fermented:0,unchanged:0},preset.mix):pred.mix;
+  const stages=usePreset?preset.stages:heuristicStages(d,flags,pred.mix);
+  const top=topFate(mix);
+
+  // dose → grams of compound
+  let compoundMg=unit==="mcg"?state.dose/1000:state.dose;
+  let elementalNote="";
+  if(usePreset&&preset.elemental){const frac=MASS[preset.elemental]*(d.counts[preset.elemental]||0)/d.mw;compoundMg=compoundMg/frac;elementalNote=fmt(state.dose,0)+" mg "+preset.elemental+" ≈ "+fmt(compoundMg,0)+" mg of "+preset.chem.toLowerCase().replace("₃","3");}
+  const usable=((mix.fuel||0)+0.5*(mix.fermented||0))/100;
+  const kcalTheo=d.kcalPerG;
+  const kcalDose=compoundMg/1000*kcalTheo*usable;
+
+  // solubility label
+  const solLabel={water:"Water-soluble",fat:"Fat-soluble",amphi:"Intermediate polarity",ionic:"Ionic / mineral salt"}[d.sol];
+  const exitTxt=/feces|bile/i.test(stages.excretion)&&!/urine/i.test(stages.excretion.split(".")[0])?"Bile / feces":(/urine/i.test(stages.excretion)?"Urine":"Mixed");
+
+  // dose status
+  let doseStatus="No reference",doseColor="var(--line)";
+  if(usePreset&&(preset.rda||preset.ul)){
+    const adj=state.dose*(preset.rdaFactor||1);
+    if(preset.ul&&state.dose>preset.ul){doseStatus="Above "+(preset.rda?"UL":"limit");doseColor="var(--bad)";}
+    else if(preset.rda&&adj<preset.rda){doseStatus="Below "+(preset.rdaLabel.startsWith("AI")?"AI":"RDA");doseColor="var(--warn)";}
+    else if(preset.rda){doseStatus=preset.ul?"Above RDA, under UL":"At or above "+(preset.rdaLabel.startsWith("AI")?"AI":"RDA");doseColor="var(--good)";}
+    else {doseStatus="Under limit";doseColor="var(--good)";}
+  }
+
+  let h="";
+  // Title + summary
+  h+='<section class="panel"><div class="titlebar"><h2 class="cmp">'+esc(name)+'</h2><span class="formula">'+formatFormula(formulaNow.trim())+'</span>'+(usePreset?'<span class="badge doc">Documented pathway</span><span class="muted" style="font-size:13px">'+esc(preset.chem)+'</span>':'<span class="badge">Predicted from formula'+(preset&&state.edited?" · edited from "+esc(preset.name):"")+'</span>')+'</div>';
+  h+='<div class="chips">'+chip("Solubility",solLabel,"var(--accent)")+chip("Main fate",top.label,"var("+top.c+")")+chip("Main exit",exitTxt)+chip("Energy at this dose",fmt(kcalDose)+" kcal","var(--f-fuel)")+chip("Dose vs reference",doseStatus,doseColor)+'</div></section>';
+
+  // Pathway
+  h+='<section class="panel"><h2>Pathway through the body</h2><div class="flow">'+
+   [["Absorption",stages.absorption],["Transport",stages.transport],["Transformation",stages.transformation],["Function",stages.function],["Storage",stages.storage],["Excretion",stages.excretion]]
+   .map(s=>'<div class="stage"><h3>'+s[0]+'</h3><p>'+esc(s[1])+'</p></div>').join("")+'</div>';
+  if(usePreset&&preset.watch) h+='<p class="watch" style="margin:12px 0 0"><b>Watch:</b> '+esc(preset.watch)+'</p>';
+  h+='</section>';
+
+  // Fate comparison
+  h+='<section class="panel"><h2>Where the dose ends up</h2>';
+  if(usePreset) h+='<div class="fate-row"><div class="lbl">Documented<small>typical oral dose</small></div>'+barHTML(mix)+'</div>';
+  h+='<div class="fate-row"><div class="lbl">Formula-only prediction<small>heuristic rules</small></div>'+barHTML(pred.mix)+'</div>';
+  h+='<div class="legend">'+FATES.map(fa=>'<span><i style="background:var('+fa.c+')"></i>'+fa.label+'</span>').join("")+'</div>';
+  h+='<table class="mix"><thead><tr><th>Fate</th>'+(usePreset?'<th style="text-align:right">Documented</th>':'')+'<th style="text-align:right">Predicted</th></tr></thead><tbody>'+FATES.map(fa=>'<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:var('+fa.c+')"></i>'+fa.label+'</td>'+(usePreset?'<td class="n">'+Math.round(mix[fa.k]||0)+'%</td>':'')+'<td class="n">'+Math.round(pred.mix[fa.k])+'%</td></tr>').join("")+'</tbody></table>';
+  if(pred.why.length) h+='<p class="muted" style="font-size:13px;margin:12px 0 4px"><b style="color:var(--ink);font-weight:600">Why the rules predict this:</b></p><ul class="checks">'+pred.why.map(w=>'<li>'+esc(w)+'</li>').join("")+'</ul>';
+  h+='</section>';
+
+  // Energy + dose
+  h+='<div class="two"><section class="panel"><h2>Energy</h2>';
+  h+='<dl class="kv"><dt>If fully oxidized</dt><dd>'+fmt(kcalTheo,2)+' kcal/g</dd><dt>O₂ needed per mole</dt><dd>'+fmt(d.o2bio,2)+' mol</dd><dt>Share actually burned</dt><dd>'+Math.round(usable*100)+'%</dd><dt>Compound in this dose</dt><dd>'+fmt(compoundMg,compoundMg<10?3:0)+' mg</dd></dl>';
+  h+='<p style="margin:14px 0 2px" class="muted">Usable energy from this dose</p><div class="big">'+fmt(kcalDose)+' kcal</div>';
+  h+='<p class="muted" style="font-size:12.5px;margin:8px 0 0">'+(usable<0.05?"Almost none of this compound's chemical energy is captured. It's used, stored or excreted instead of burned.":"A meaningful share of the chemical energy is captured as ATP.")+(elementalNote?" "+esc(elementalNote)+".":"")+'</p></section>';
+
+  h+='<section class="panel"><h2>Dose vs. intake references</h2>';
+  if(usePreset&&(preset.rda||preset.ul)){
+    const ref=Math.max(preset.ul||0,preset.rda||0);
+    const doseCmp=state.dose;
+    const max=Math.max(ref*1.25,doseCmp*1.1);
+    const pos=v=>Math.min(100,v/max*100);
+    const rdaRaw=preset.rda?preset.rda/(preset.rdaFactor||1):null; // in label units
+    h+='<div class="dosebar">';
+    if(rdaRaw) h+='<div class="zone" style="left:'+pos(rdaRaw)+'%;width:'+((preset.ul?pos(preset.ul):100)-pos(rdaRaw))+'%;background:color-mix(in srgb,var(--good) 35%,transparent)"></div>';
+    if(preset.ul) h+='<div class="zone" style="left:'+pos(preset.ul)+'%;right:0;background:color-mix(in srgb,var(--bad) 35%,transparent)"></div>';
+    if(rdaRaw) h+='<div class="tick" style="left:'+pos(rdaRaw)+'%"><span>'+(preset.rdaLabel.startsWith("AI")?"AI ":"RDA ")+fmt(rdaRaw,0)+'</span></div>';
+    if(preset.ul) h+='<div class="tick" style="left:'+pos(preset.ul)+'%"><span>'+(preset.rda?"UL ":"Limit ")+fmt(preset.ul,0)+'</span></div>';
+    h+='<div class="dot" style="left:'+pos(doseCmp)+'%"></div><div class="you" style="left:'+pos(doseCmp)+'%">You: '+fmt(doseCmp,1)+'</div></div>';
+    h+='<dl class="kv">'+(preset.rda?'<dt>'+esc(preset.rdaLabel)+'</dt><dd>'+fmt(preset.rda,1)+' '+unit+'</dd>':'')+(preset.ul?'<dt>'+esc(preset.ulLabel)+'</dt><dd>'+fmt(preset.ul,0)+' '+unit+'</dd>':'<dt>Upper limit</dt><dd>none set</dd>')+'<dt>Your dose</dt><dd>'+fmt(state.dose,1)+' '+unit+'</dd>'+(preset.rda?'<dt>Multiple of '+(preset.rdaLabel.startsWith("AI")?"AI":"RDA")+'</dt><dd>×'+fmt(state.dose*(preset.rdaFactor||1)/preset.rda,1)+'</dd>':'')+'</dl>';
+  } else {
+    h+='<p class="muted" style="margin:0;font-size:13.5px">'+(usePreset?"There's no official intake reference for this compound.":"Custom compounds have no intake reference. Pick a library entry to compare a dose against US RDA and UL values.")+'</p>';
+  }
+  h+='</section></div>';
+
+  // Descriptors
+  const els=Object.keys(d.counts).sort((a,b)=>(a==="C"?-2:a==="H"?-1:0)-(b==="C"?-2:b==="H"?-1:0)||a.localeCompare(b));
+  const compHTML='<div style="overflow-x:auto"><table class="el"><thead><tr><th>Element</th><th>Atoms</th><th>Mass %</th></tr></thead><tbody>'+els.map(e=>'<tr><td>'+e+'</td><td>'+d.counts[e]+'</td><td>'+fmt(MASS[e]*d.counts[e]/d.mw*100,1)+'</td></tr>').join("")+'</tbody></table></div>';
+  if(rdRes&&rdRes.svg){
+    h+='<div class="two"><section class="panel"><h2>Structure</h2><div class="struct" role="img" aria-label="2D structure of '+esc(name)+'">'+rdRes.svg.replace(/<\?xml[^>]*\?>/,"")+'</div></section><section class="panel"><h2>Composition</h2>'+compHTML+'</section></div>';
+  } else {
+    h+='<section class="panel"><h2>Composition</h2>'+compHTML+'</section>';
+  }
+  let lip,lipTitle;
+  if(d.rd){
+    lipTitle="Oral-absorption screen (Lipinski Rule of 5 + Veber)";
+    lip=[[d.mw<=500,"Molecular weight ≤ 500 ("+fmt(d.mw,1)+")"],[d.logP<=5,"logP ≤ 5 ("+fmt(d.logP,1)+")"],[d.hbd<=5,"H-bond donors ≤ 5 ("+d.hbd+")"],[d.hba<=10,"H-bond acceptors ≤ 10 ("+d.hba+")"],[d.tpsa<=140,"Polar surface area ≤ 140 Å² ("+fmt(d.tpsa,0)+")"],[d.rotb<=10,"Rotatable bonds ≤ 10 ("+d.rotb+")"]];
+  } else {
+    lipTitle="Oral-absorption screen (partial: paste a SMILES for logP, H-bond donors and polar surface area)";
+    lip=[[d.mw<=500,"Molecular weight ≤ 500 ("+fmt(d.mw,1)+")"],[d.hba<=10,"H-bond acceptors (N+O) ≤ 10 ("+d.hba+")"],[d.sol!=="fat"||d.C<30,"Not extremely lipophilic"]];
+  }
+  h+='<section class="panel"><h2>Descriptors</h2><div class="two"><dl class="kv"><dt>Molar mass</dt><dd>'+fmt(d.mw,2)+' g/mol</dd>'+
+    (d.rd?'<dt>Crippen logP</dt><dd>'+fmt(d.logP,2)+'</dd><dt>Polar surface area</dt><dd>'+fmt(d.tpsa,1)+' Å²</dd><dt>Aromatic rings</dt><dd>'+d.aromRings+'</dd><dt>Stereocenters</dt><dd>'+d.stereo+'</dd>':'')+
+    '<dt>Polarity index (O+N+2P+½S)/C</dt><dd>'+(isFinite(d.polarity)?fmt(d.polarity,2):"n/a")+'</dd><dt>Degree of unsaturation</dt><dd>'+(d.dou==null?"n/a":fmt(d.dou,1))+'</dd><dt>Metals</dt><dd>'+(d.metals.join(", ")||"none")+'</dd></dl>';
+  h+='<div><p class="muted" style="font-size:13px;margin:0">'+lipTitle+'</p><ul class="checks">'+(d.organic?lip.map(l=>'<li class="'+(l[0]?"ok":"no")+'">'+esc(l[1])+'</li>').join(""):'<li>Doesn’t apply to inorganic salts</li>')+'</ul></div></div></section>';
+
+  $("results").innerHTML=h;
+}
+
+buildLibrary();
+loadPreset("vitc");
+initEngine();
+})();
+</script>
+</body>
+</html>
