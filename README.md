@@ -1,5 +1,18 @@
 # MetabolismMath
 
+<!-- site-summary:start -->
+<!-- This section is this project's card on https://mendus59.github.io and is copied there daily.
+     Keep it true of what's on main: one plain-text summary line (max 160 characters), then 1-6 short bullets.
+     See CLAUDE.md ("Site summary"). -->
+Estimate how a vitamin or supplement is metabolized from its chemical structure, right in the browser.
+
+- A library of 24 vitamins, minerals and supplements, each with its documented absorption, transport, transformation, storage and excretion pathway.
+- Paste a SMILES structure and RDKit calculates the formula, logP, polar surface area and Lipinski/Veber screen, and draws the 2D structure.
+- Or enter just a molecular formula, including hydrates like C4H9N3O2·H2O, and tick its structural features by hand.
+- A rule-based prediction of how a dose splits between energy, cofactor use, storage, gut fermentation and excretion.
+- Checks your dose against US adult RDA/AI and upper limits, and estimates the usable energy.
+<!-- site-summary:end -->
+
 A browser-based calculator that estimates how a vitamin or supplement is metabolized from its chemical composition.
 
 **Live site:** https://mendus59.github.io/MetabolismMath/
