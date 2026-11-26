@@ -13,6 +13,9 @@ Estimate how a vitamin or supplement is metabolized from its chemical structure,
 - Checks your dose against US adult RDA/AI and upper limits, and estimates the usable energy.
 <!-- site-summary:end -->
 
+<!-- site-screenshot: docs/screenshot.jpg -->
+![Screenshot of MetabolismMath](docs/screenshot.jpg)
+
 A browser-based calculator that estimates how a vitamin or supplement is metabolized from its chemical composition.
 
 **Live site:** https://mendus59.github.io/MetabolismMath/
